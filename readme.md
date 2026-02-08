@@ -5,8 +5,8 @@
 Project Aesclepius is a predictive simulation engine designed to model healthcare resource allocation in a post-crisis economy. By 2026, healthcare demand is projected to outpace supply. This tool allows policymakers and hospital administrators to test "Safety Net" strategies, balancing the competing goals of economic efficiency and human compassion.
 
 ## 🚀 Quick Start
-1.  **Explore the Tech**: [Technical Explainer Notebook](tech_explainer.ipynb)
-2.  **Run the Simulation**: [Launch Streamlit App](https://project-aesclepius.streamlit.app) *(Link active after deployment)*
+1.  **Read the docs*: [Technical Explainer Notebook](tech_explainer.ipynb)
+2.  **Run the Simulation**: [Launch Streamlit App](https://project-aesclepius.streamlit.app)
 
 ## 🧠 The Technology
 * **Triage Engine**: XGBoost Classifier trained to predict patient mortality risk.

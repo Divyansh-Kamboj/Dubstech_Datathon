@@ -57,6 +57,8 @@ budget = st.sidebar.number_input(
     step=1_000_000,
     format="%d",
 )
+
+st.sidebar.markdown("---")
 st.sidebar.subheader("Priority Weights")
 
 w_efficiency = st.sidebar.slider(
@@ -105,6 +107,9 @@ spent = budget - remaining
 total_lives_saved = int(result["People_Covered"].sum())
 total_patients = int(result["Projected_Volume"].sum())
 total_unmet = total_patients - total_lives_saved
+
+# ── KPI metrics ──────────────────────────────────────────────────────
+st.markdown("---")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("💚 Lives Covered", f"{total_lives_saved:,}")
 col2.metric("💰 Budget Spent", f"${spent:,.0f}")
@@ -125,6 +130,8 @@ if not partial.empty:
             f"only **{pct:.1%}** funded "
             f"({covered:,} of {total:,} patients covered)"
         )
+
+st.markdown("---")
 
 dept_summary = (
     result
@@ -182,6 +189,9 @@ dept_display["Coverage_Pct"] = dept_display["Coverage_Pct"].apply(
     lambda x: f"{x:.1%}"
 )
 st.dataframe(dept_display, use_container_width=True, hide_index=True)
+
+# ── Unfunded risk groups ─────────────────────────────────────────────
+st.markdown("---")
 
 unfunded = result[result["Funded_Pct"] == 0.0]
 

@@ -106,3 +106,4 @@ print(f"\n✅ Total predicted sick patients in 2026: {total:,}")
 
 # Save
 final.to_csv("2026_forecast.csv", index=False)
+print("Saved → 2026_forecast.csv")

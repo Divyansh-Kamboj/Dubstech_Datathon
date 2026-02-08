@@ -1,3 +1,4 @@
+import pandas as pd
 
 # Load the dataset
 df = pd.read_csv("Access_to_Care_Dataset.csv")
@@ -33,8 +34,16 @@ df["Department"] = df["TOPIC"].apply(map_department)
 
 # Drop rows that didn't match any department
 df = df[df["Department"] != "Drop"]
+
+# ── 3. Validation ──
+
+print("First 5 rows of the cleaned dataframe:")
 print(df.head())
+
+print("\nUnique Department values:")
 print(df["Department"].unique())
+
+print("\nUnique SUBGROUP values (age groups):")
 print(df["SUBGROUP"].unique())
 
 # ── 4. Risk Score Calculation ──
@@ -61,4 +70,8 @@ def calculate_risk_score(row):
 
 
 df["Risk_Score"] = df.apply(calculate_risk_score, axis=1)
+
+# ── 5. Risk Score Validation ──
+
+print("\nRisk Score check (Department, SUBGROUP, Risk_Score):")
 print(df[["Department", "SUBGROUP", "Risk_Score"]].drop_duplicates().to_string(index=False))

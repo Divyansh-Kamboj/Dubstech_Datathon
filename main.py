@@ -12,8 +12,9 @@ from src.engine import BudgetAllocator
 
 # ── Configuration ────────────────────────────────────────────────────
 DATA_PATH = "data/mock_demand_2026.csv"
-TOTAL_BUDGET = 50_000_000        # $50 M
-HUMANITY_WEIGHT = 0.5            # Balanced: risk vs. efficiency
+TOTAL_BUDGET = 30_000_000        # $30 M (realistic for 200k catchment)
+W_EFFICIENCY = 0.5               # Balanced: efficiency vs. humanity
+W_HUMANITY = 0.5
 
 
 def main():
@@ -27,22 +28,23 @@ def main():
     # 3. Run allocation engine --------------------------------------------
     allocator = BudgetAllocator()
     result, remaining = allocator.run_allocation(
-        df, TOTAL_BUDGET, humanity_weight=HUMANITY_WEIGHT
+        df, TOTAL_BUDGET, w_efficiency=W_EFFICIENCY, w_humanity=W_HUMANITY
     )
 
     # 4. Summary ----------------------------------------------------------
-    funded = result[result["Funded_Status"] == "Yes"]
+    funded = result[result["Funded_Status"].isin(["Yes", "Partial"])]
     unfunded = result[result["Funded_Status"] == "No"]
 
     spent = TOTAL_BUDGET - remaining
     utilization = (spent / TOTAL_BUDGET) * 100
-    total_patients_saved = funded["Projected_Volume"].sum()
+    total_patients_saved = int(result["People_Covered"].sum())
 
     print("=" * 55)
     print("  SAFETY NET SIMULATOR 2026 — ALLOCATION SUMMARY")
     print("=" * 55)
     print(f"  Budget:              ${TOTAL_BUDGET:>14,.2f}")
-    print(f"  Humanity Weight:     {HUMANITY_WEIGHT}")
+    print(f"  Efficiency Weight:   {W_EFFICIENCY}")
+    print(f"  Humanity Weight:     {W_HUMANITY}")
     print("-" * 55)
     print(f"  Groups Funded:       {len(funded):>6}  / {len(result)}")
     print(f"  Groups Unfunded:     {len(unfunded):>6}  / {len(result)}")

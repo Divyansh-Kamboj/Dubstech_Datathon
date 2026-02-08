@@ -71,17 +71,18 @@ forecast_df = pd.DataFrame(forecast_rows)
 print("── Predicted 2026 Rates ──")
 print(forecast_df.to_string(index=False))
 
-# ── Step 4: Convert to Patient Volume (CBO 2026 Population) ──
+# ── Step 4: Convert to Patient Volume (Hospital Catchment Area) ──
 
-# Source: Congressional Budget Office (2025), "The Demographic Outlook: 2025 to 2055"
-# Adjusted for 2026 projections.
-# Note: dataset uses "75 years and older"; CBO label is "75 years and over".
+# Model: Level 1 Trauma Center serving an urban catchment of ~200,000 adults.
+# This replaces the national CBO figures so the budget-vs-demand game
+# is realistic for a single facility.
 POPULATION_2026 = {
-    "18-44 years": 118_000_000,
-    "45-64 years": 85_000_000,
-    "65-74 years": 37_000_000,
-    "75 years and older": 26_000_000,  # mapped to match dataset label
+    "18-44 years":          80_000,   # ~40 % of adult pop
+    "45-64 years":          60_000,   # ~30 %
+    "65-74 years":          30_000,   # ~15 % (Boomer echo)
+    "75 years and older":   30_000,   # ~15 % (high resource users)
 }
+# Total Catchment: 200,000 Adults
 
 forecast_df["Predicted_Patients_2026"] = (
     (forecast_df["Predicted_Rate_2026"] / 100)

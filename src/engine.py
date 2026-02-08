@@ -2,8 +2,19 @@
 Safety Net Simulator 2026 — Budget Allocation Engine
 =====================================================
 Ranks patient groups by a blended priority score (clinical risk vs.
-cost-efficiency) and greedily funds groups until the budget is exhausted.
+cost-efficiency) and greedily funds groups — with **fractional funding**
+so that even groups larger than the remaining budget receive a partial
+allocation.
+
+Normalization
+-------------
+- **Risk**       : ``Risk_Score / 10``  →  0.0 – 1.0 (higher = sicker)
+- **Efficiency** : ``(max_cost - cost) / (max_cost - min_cost)``
+                   →  0.0 (most expensive) – 1.0 (cheapest)
+- **Priority**   : ``w_efficiency × Efficiency + w_humanity × Risk``
 """
+
+import numpy as np
 
 
 class BudgetAllocator:
@@ -12,7 +23,13 @@ class BudgetAllocator:
     # -----------------------------------------------------------------
     # Public API
     # -----------------------------------------------------------------
-    def run_allocation(self, df, total_budget, humanity_weight=0.6):
+    def run_allocation(
+        self,
+        df,
+        total_budget,
+        w_efficiency=0.5,
+        w_humanity=0.5,
+    ):
         """
         Allocate a fixed budget across patient groups.
 
@@ -23,61 +40,74 @@ class BudgetAllocator:
             ``Total_Group_Cost``, and ``Projected_Volume``.
         total_budget : float
             Total dollars available for allocation.
-        humanity_weight : float, default 0.6
-            Weight given to clinical risk (0-1).  The remainder
-            ``(1 - humanity_weight)`` is given to cost-efficiency.
+        w_efficiency : float
+            Weight given to cost-efficiency (0-1).
+        w_humanity : float
+            Weight given to clinical risk (0-1).
 
         Returns
         -------
         (pandas.DataFrame, float)
-            The enriched DataFrame (with ``Normalized_Risk``,
-            ``Normalized_Efficiency``, ``Priority_Score``, and
-            ``Funded_Status`` columns) and the unspent budget.
+            The enriched DataFrame (with scoring, funding, and
+            coverage columns) and the unspent budget.
         """
         df = df.copy()
 
-        # 1. Normalize inputs ------------------------------------------------
-        df["Normalized_Risk"] = self._min_max_normalize(df["Risk_Score"])
+        # 1. Normalize Risk — divide by 10 so it sits in [0, 1] -----------
+        df["Normalized_Risk"] = (df["Risk_Score"] / 10.0).round(4)
 
-        # For efficiency, *invert* so that the cheapest → 1, priciest → 0
-        df["Normalized_Efficiency"] = self._min_max_normalize(
-            df["Cost_Per_Person"], invert=True
-        )
+        # 2. Normalize Efficiency — inverted min-max on cost ---------------
+        max_cost = df["Cost_Per_Person"].max()
+        min_cost = df["Cost_Per_Person"].min()
+        if max_cost == min_cost:
+            df["Normalized_Efficiency"] = 0.5
+        else:
+            df["Normalized_Efficiency"] = (
+                (max_cost - df["Cost_Per_Person"]) / (max_cost - min_cost)
+            ).round(4)
 
-        # 2. Blended priority score ------------------------------------------
+        # 3. Blended priority score ----------------------------------------
         df["Priority_Score"] = (
-            humanity_weight * df["Normalized_Risk"]
-            + (1 - humanity_weight) * df["Normalized_Efficiency"]
+            w_efficiency * df["Normalized_Efficiency"]
+            + w_humanity * df["Normalized_Risk"]
         ).round(4)
 
-        # 3. Greedy allocation ------------------------------------------------
+        # 4. Greedy allocation with fractional funding ---------------------
         df = df.sort_values("Priority_Score", ascending=False).reset_index(
             drop=True
         )
 
         remaining_budget = float(total_budget)
-        funded = []
+        funded_pct = []
+        people_covered = []
+        amount_allocated = []
 
-        for cost in df["Total_Group_Cost"]:
-            if cost <= remaining_budget:
-                funded.append("Yes")
+        for _, row in df.iterrows():
+            cost = row["Total_Group_Cost"]
+            volume = row["Projected_Volume"]
+
+            if remaining_budget <= 0:
+                funded_pct.append(0.0)
+                people_covered.append(0)
+                amount_allocated.append(0.0)
+            elif cost <= remaining_budget:
+                funded_pct.append(1.0)
+                people_covered.append(int(volume))
+                amount_allocated.append(round(cost, 2))
                 remaining_budget -= cost
             else:
-                funded.append("No")
+                frac = remaining_budget / cost if cost > 0 else 0.0
+                funded_pct.append(round(frac, 6))
+                people_covered.append(int(np.floor(volume * frac)))
+                amount_allocated.append(round(remaining_budget, 2))
+                remaining_budget = 0.0
 
-        df["Funded_Status"] = funded
+        df["Funded_Pct"] = funded_pct
+        df["People_Covered"] = people_covered
+        df["Amount_Allocated"] = amount_allocated
+
+        df["Funded_Status"] = df["Funded_Pct"].apply(
+            lambda p: "Yes" if p >= 1.0 else ("Partial" if p > 0 else "No")
+        )
 
         return df, round(remaining_budget, 2)
-
-    # -----------------------------------------------------------------
-    # Helpers
-    # -----------------------------------------------------------------
-    @staticmethod
-    def _min_max_normalize(series, invert=False):
-        """Scale *series* to [0, 1].  If *invert*, flip so max → 0."""
-        s_min = series.min()
-        s_max = series.max()
-        if s_max == s_min:
-            return series.map(lambda _: 0.5)
-        normalized = (series - s_min) / (s_max - s_min)
-        return (1 - normalized).round(4) if invert else normalized.round(4)

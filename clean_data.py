@@ -75,3 +75,6 @@ df["Risk_Score"] = df.apply(calculate_risk_score, axis=1)
 
 print("\nRisk Score check (Department, SUBGROUP, Risk_Score):")
 print(df[["Department", "SUBGROUP", "Risk_Score"]].drop_duplicates().to_string(index=False))
+
+# Save the clean data so the next script can pick it up
+df.to_csv("cleaned_data_intermediate.csv", index=False)

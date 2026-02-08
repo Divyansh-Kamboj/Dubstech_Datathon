@@ -1,0 +1,2 @@
+api_key = 'csk-rr633p2ep5weyepdwp8j2d984458yyymhtkpkdwr4hmr9rvr'
+model = 'cerebras:gpt-oss-120b'

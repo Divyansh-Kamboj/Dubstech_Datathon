@@ -10,6 +10,7 @@ Trains two models on the NY SPARCS 2022 inpatient dataset:
 Artefacts are saved under ``models/``.
 """
 
+import math
 import os
 import pickle
 
@@ -151,8 +152,10 @@ def main() -> None:
     )
 
     y_pred = xgb_model.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    print(f"\n   XGBoost accuracy: {acc:.4f}")
+    xgb_acc = accuracy_score(y_test, y_pred)
+    n_test = len(y_test)
+    xgb_moe = 1.96 * math.sqrt((xgb_acc * (1 - xgb_acc)) / n_test)
+    print(f"\n   XGBoost accuracy: {xgb_acc:.4f} (+/- {xgb_moe:.4f})")
     print(classification_report(
         y_test, y_pred,
         target_names=["Minor", "Moderate", "Major", "Extreme"],
@@ -167,19 +170,36 @@ def main() -> None:
     # ──────────────────────────────────────────────────────────────────
     print("\n📈  Training per-department Cox Proportional-Hazards models …")
     cox_cols = ["Age_Numeric", "Emergency_Flag", "Length of Stay", "Event"]
-    cox_models = {}  # {dept_name: fitted CoxPHFitter}
+    cox_models = {}      # {dept_name: fitted CoxPHFitter}
+    cox_cindices = {}    # {dept_name: C-Index on held-out test set}
 
     for code, dept_name in DEPT_MAP.items():
         df_dept = df[df["APR MDC Code"] == code][cox_cols].copy()
-        if df_dept.empty or df_dept["Event"].sum() == 0:
-            print(f"   ⚠️  {dept_name}: skipped (no events or no data)")
+        if df_dept.empty or df_dept["Event"].sum() < 2:
+            print(f"   ⚠️  {dept_name}: skipped (insufficient events)")
             continue
 
-        print(f"\n   ── {dept_name} (n={len(df_dept):,}, events={int(df_dept['Event'].sum()):,}) ──")
+        # 80/20 train-test split (stratify on Event so both sets have events)
+        df_train, df_test = train_test_split(
+            df_dept, test_size=0.2, random_state=42, stratify=df_dept["Event"],
+        )
+
+        print(f"\n   ── {dept_name} (train={len(df_train):,}, test={len(df_test):,}, "
+              f"events={int(df_dept['Event'].sum()):,}) ──")
+
         cph = CoxPHFitter()
-        cph.fit(df_dept, duration_col="Length of Stay", event_col="Event")
+        cph.fit(df_train, duration_col="Length of Stay", event_col="Event")
         cph.print_summary()
-        cox_models[dept_name] = cph
+
+        # Concordance Index on the held-out test set
+        c_index = cph.score(df_test, scoring_method="concordance_index")
+        cox_cindices[dept_name] = c_index
+        print(f"   C-Index (test): {c_index:.4f}")
+
+        # Re-fit on ALL data for the production model we ship
+        cph_full = CoxPHFitter()
+        cph_full.fit(df_dept, duration_col="Length of Stay", event_col="Event")
+        cox_models[dept_name] = cph_full
 
     # Save the dict of all per-department Cox models
     cox_dict_path = os.path.join(MODELS_DIR, "cox_models.pkl")
@@ -209,6 +229,20 @@ def main() -> None:
         pickle.dump(config, f)
     print(f"   ✅ Saved config mappings → {config_path}")
 
+    # ──────────────────────────────────────────────────────────────────
+    # 11. Performance Report
+    # ──────────────────────────────────────────────────────────────────
+    print("\n" + "=" * 48)
+    print("       MODEL PERFORMANCE REPORT")
+    print("=" * 48)
+    print(f"  XGBoost Triage Accuracy : "
+          f"{xgb_acc * 100:.1f}% (+/- {xgb_moe * 100:.1f}%)")
+    for dept_name, ci in cox_cindices.items():
+        print(f"  Cox C-Index ({dept_name:14s}): {ci:.4f}")
+    if cox_cindices:
+        avg_ci = np.mean(list(cox_cindices.values()))
+        print(f"  Cox C-Index (avg)         : {avg_ci:.4f}")
+    print("=" * 48)
     print("\n🎉  All models trained and saved successfully!")
 
 

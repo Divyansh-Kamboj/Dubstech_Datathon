@@ -163,20 +163,35 @@ def main() -> None:
     print(f"   ✅ Saved XGBoost model → {xgb_path}")
 
     # ──────────────────────────────────────────────────────────────────
-    # 9. Model B — Cox Proportional-Hazards
+    # 9. Model B — Department-Stratified Cox Proportional-Hazards
     # ──────────────────────────────────────────────────────────────────
-    print("\n📈  Training Cox Proportional-Hazards model …")
-    cox_cols = FEATURES + ["Length of Stay", "Event"]
-    cox_df = df[cox_cols].copy()
+    print("\n📈  Training per-department Cox Proportional-Hazards models …")
+    cox_cols = ["Age_Numeric", "Emergency_Flag", "Length of Stay", "Event"]
+    cox_models = {}  # {dept_name: fitted CoxPHFitter}
 
-    cph = CoxPHFitter()
-    cph.fit(cox_df, duration_col="Length of Stay", event_col="Event")
-    cph.print_summary()
+    for code, dept_name in DEPT_MAP.items():
+        df_dept = df[df["APR MDC Code"] == code][cox_cols].copy()
+        if df_dept.empty or df_dept["Event"].sum() == 0:
+            print(f"   ⚠️  {dept_name}: skipped (no events or no data)")
+            continue
 
-    cox_path = os.path.join(MODELS_DIR, "cox_survival.pkl")
-    with open(cox_path, "wb") as f:
-        pickle.dump(cph, f)
-    print(f"   ✅ Saved Cox model → {cox_path}")
+        print(f"\n   ── {dept_name} (n={len(df_dept):,}, events={int(df_dept['Event'].sum()):,}) ──")
+        cph = CoxPHFitter()
+        cph.fit(df_dept, duration_col="Length of Stay", event_col="Event")
+        cph.print_summary()
+        cox_models[dept_name] = cph
+
+    # Save the dict of all per-department Cox models
+    cox_dict_path = os.path.join(MODELS_DIR, "cox_models.pkl")
+    with open(cox_dict_path, "wb") as f:
+        pickle.dump(cox_models, f)
+    print(f"\n   ✅ Saved {len(cox_models)} Cox models → {cox_dict_path}")
+
+    # Also keep a legacy single-file for backward compat (first model)
+    if cox_models:
+        legacy_path = os.path.join(MODELS_DIR, "cox_survival.pkl")
+        with open(legacy_path, "wb") as f:
+            pickle.dump(next(iter(cox_models.values())), f)
 
     # ──────────────────────────────────────────────────────────────────
     # 10. Save configuration / mappings for the app

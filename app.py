@@ -10,7 +10,6 @@ Streamlit pattern for dashboards.
 
 import os
 import pickle
-
 import numpy as np
 import streamlit as st
 import pandas as pd
@@ -23,7 +22,7 @@ from src.costs import apply_meps_costs, MEPS_BASE_COSTS
 
 # ── Page config ──────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Project Aesclepius: 2026 Simulator",
+    page_title="Project Aesclepius",
     layout="wide",
 )
 
@@ -80,7 +79,7 @@ def load_models():
 
     models_dir = _resolve_models_dir()
     st.sidebar.caption(f"📁 Models dir: `{models_dir}`")
-    xgb_booster, cox_model, config = None, None, {}
+    xgb_booster, cox_models, config = None, {}, {}
 
     # XGBoost — load the raw Booster for reliable probability inference
     xgb_path = os.path.join(models_dir, "xgb_mortality.json")
@@ -91,14 +90,24 @@ def load_models():
         st.sidebar.error(f"DEBUG XGBoost error: {e}")
         xgb_booster = None
 
-    # Cox PH model
-    cox_path = os.path.join(models_dir, "cox_survival.pkl")
+    # Per-department Cox PH models (dict: dept_name → CoxPHFitter)
+    cox_dict_path = os.path.join(models_dir, "cox_models.pkl")
+    cox_legacy_path = os.path.join(models_dir, "cox_survival.pkl")
     try:
-        with open(cox_path, "rb") as f:
-            cox_model = pickle.load(f)
+        with open(cox_dict_path, "rb") as f:
+            cox_models = pickle.load(f)           # {str: CoxPHFitter}
+    except FileNotFoundError:
+        # Fallback: legacy single-model file → wrap in dict for all depts
+        try:
+            with open(cox_legacy_path, "rb") as f:
+                single = pickle.load(f)
+            cox_models = {d: single for d in
+                          ["Cardiology", "Oncology", "Endocrinology", "Mental Health"]}
+            st.sidebar.warning("Using legacy single Cox model for all depts.")
+        except Exception as e2:
+            st.sidebar.error(f"DEBUG Cox error: {e2}")
     except Exception as e:
-        st.sidebar.error(f"DEBUG Cox error: {e}")
-        cox_model = None
+        st.sidebar.error(f"DEBUG Cox dict error: {e}")
 
     # Shared config / mappings
     cfg_path = os.path.join(models_dir, "config.pkl")
@@ -108,7 +117,7 @@ def load_models():
     except Exception as e:
         st.sidebar.error(f"DEBUG Config error: {e}")
 
-    return xgb_booster, cox_model, config
+    return xgb_booster, cox_models, config
 
 
 def synthesize_features(
@@ -117,6 +126,11 @@ def synthesize_features(
     """
     Bridge function: translate a forecast row (Risk_Score + Department)
     into the feature vector the ML models were trained on.
+
+    Department-aware heuristics:
+    - **Mental Health** patients rarely present via emergency even at high
+      risk, so ``Emergency_Flag`` stays 0 regardless of score.
+    - All other departments follow the standard risk → emergency mapping.
     """
     # ── Age & Emergency heuristics based on risk severity ──
     if risk_score > 8:
@@ -129,6 +143,12 @@ def synthesize_features(
         age_numeric, emergency_flag = 1, 0      # 18-29 / healthy
     else:
         age_numeric, emergency_flag = 1, 0      # young / low-risk
+
+    # Mental Health patients don't follow the acute-emergency pattern —
+    # keep Emergency_Flag = 0 so their survival curves aren't artificially
+    # pulled toward the Cardio/Trauma profile.
+    if department_name == "Mental Health":
+        emergency_flag = 0
 
     # ── Department → integer code via the saved LabelEncoder ──
     dept_le = config.get("dept_label_encoder")
@@ -154,13 +174,13 @@ def _xgb_predict_proba(booster, features_df):
 
 
 # ── Sidebar controls ─────────────────────────────────────────────────
-st.sidebar.title("Project Aesclepius: 2026 Simulator")
+st.sidebar.title("Project Aesclepius")
 
 budget = st.sidebar.number_input(
-    "Total Budget ($)",
-    min_value=1_000_000,
-    max_value=500_000_000_000,
-    value=30_000_000,
+    "Total Block Grant ($)",
+    min_value=75_000_000,
+    max_value=400_000_000,
+    value=100_000_000,
     step=1_000_000,
     format="%d",
 )
@@ -184,11 +204,18 @@ w_humanity = st.sidebar.slider(
     step=0.05,
 )
 
-st.sidebar.caption(
-    "**Score = (Efficiency Wt × Normalized_Efficiency) "
-    "+ (Humanity Wt × Normalized_Risk)**  \n"
-    "Risk is scaled 0–1 (Risk_Score ÷ 10).  "
-    "Efficiency is inverted cost: cheapest dept → 1.0, priciest → 0.0."
+st.sidebar.markdown(
+    "**📖 Metric Definitions**\n\n"
+    "- **Lives Saved**: The total number of patients who received full treatment funding.\n"
+    "- **Unmet Need**: The number of patients who could not be treated due to budget limits.\n"
+    "- **Efficiency Strategy**: Prioritizes treatments that help the most people for the lowest cost.\n"
+    "- **Humanity Strategy**: Prioritizes the sickest patients with the highest immediate mortality risk."
+)
+
+st.sidebar.markdown("---")
+st.sidebar.info(
+    "**Risk Factor:** A prediction of how likely a patient is to face a "
+    "critical outcome if care is delayed, based on their clinical profile."
 )
 
 # ── Cost reference in sidebar ────────────────────────────────────────
@@ -200,7 +227,14 @@ for dept, base in MEPS_BASE_COSTS.items():
 
 
 # ── Main area ────────────────────────────────────────────────────────
-st.title("⚕️ Project Aesclepius — 2026 Safety Net Simulator")
+st.title("⚕️ Project Aesclepius")
+
+st.markdown(
+    "### 📋 Overview\n\n"
+    "This simulator models the impact of healthcare resource rationing in a "
+    "resource-constrained 2026. It uses real clinical data to predict patient "
+    "outcomes based on budget allocation strategies."
+)
 
 df = load_data()
 
@@ -217,7 +251,7 @@ total_patients = int(result["Projected_Volume"].sum())
 total_unmet = total_patients - total_lives_saved
 
 # ── Load ML models & compute AI mortality probability ────────────────
-xgb_booster, cox_model, model_config = load_models()
+xgb_booster, cox_models, model_config = load_models()
 
 if xgb_booster is not None:
     ai_probs = []
@@ -325,27 +359,6 @@ with tab_triage:
     )
     st.dataframe(dept_display, use_container_width=True, hide_index=True)
 
-    # ── Unfunded risk groups ─────────────────────────────────────────
-    st.markdown("---")
-    st.subheader("🔴 Unfunded Risk Groups (0 % Coverage)")
-
-    unfunded = result[result["Funded_Pct"] == 0.0]
-
-    if unfunded.empty:
-        st.success("All patient groups receive at least partial funding! 🎉")
-    else:
-        display_cols = [
-            "Department", "Risk_Score", "Projected_Volume",
-            "Cost_Per_Person", "Total_Group_Cost", "Priority_Score",
-        ]
-        display_cols = [c for c in display_cols if c in unfunded.columns]
-        st.dataframe(
-            unfunded[display_cols]
-            .sort_values("Priority_Score", ascending=True)
-            .reset_index(drop=True),
-            use_container_width=True,
-        )
-
     # ── Full allocation table (now includes AI column) ───────────────
     with st.expander("📋 Full Allocation Table (with AI Insights)"):
         st.dataframe(result, use_container_width=True)
@@ -362,35 +375,42 @@ with tab_survival:
         "saves more lives."
     )
 
-    if cox_model is None:
-        st.error("Cox Proportional-Hazards model could not be loaded.")
+    if not cox_models:
+        st.error("Cox Proportional-Hazards models could not be loaded.")
     else:
         departments = sorted(result["Department"].unique())
         sel_dept = st.selectbox("Select Department", departments)
 
-        # Build synthetic patients at low / medium / high risk tiers
-        risk_tiers = [2, 5, 8]
-        tier_labels = ["Low Risk (2)", "Medium Risk (5)", "High Risk (8)"]
+        dept_cox = cox_models.get(sel_dept)
+        if dept_cox is None:
+            st.warning(f"No Cox model available for **{sel_dept}**.")
+        else:
+            # Build synthetic patients at low / medium / high risk tiers
+            risk_tiers = [2, 5, 8]
+            tier_labels = ["Low Risk (2)", "Medium Risk (5)", "High Risk (8)"]
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        for rs, label in zip(risk_tiers, tier_labels):
-            syn = synthesize_features(rs, sel_dept, model_config)
-            sf = cox_model.predict_survival_function(syn)
-            ax.plot(sf.index, sf.iloc[:, 0], label=label, linewidth=2)
+            # Cox features: Age_Numeric + Emergency_Flag (no Dept_Code —
+            # the department is already captured by using a separate model)
+            fig, ax = plt.subplots(figsize=(10, 5))
+            for rs, label in zip(risk_tiers, tier_labels):
+                syn = synthesize_features(rs, sel_dept, model_config)
+                syn_cox = syn[["Age_Numeric", "Emergency_Flag"]]  # match training cols
+                sf = dept_cox.predict_survival_function(syn_cox)
+                ax.plot(sf.index, sf.iloc[:, 0], label=label, linewidth=2)
 
-        ax.set_xlabel("Length of Stay (days)")
-        ax.set_ylabel("Survival Probability")
-        ax.set_title(f"Survival Curves — {sel_dept}")
-        ax.legend()
-        ax.grid(alpha=0.3)
-        st.pyplot(fig)
+            ax.set_xlabel("Length of Stay (days)")
+            ax.set_ylabel("Survival Probability")
+            ax.set_title(f"Survival Curves — {sel_dept} (dept-specific model)")
+            ax.legend()
+            ax.grid(alpha=0.3)
+            st.pyplot(fig)
 
-        st.info(
-            "💡 **Interpretation:** Each curve represents a synthetic patient "
-            "profile at a different risk level.  The *High Risk* curve drops "
-            "fastest — these patients have the greatest urgency for "
-            "resource allocation."
-        )
+            st.info(
+                "💡 **Interpretation:** Each curve is produced by a **department-specific** "
+                "Cox model, so the baseline hazard reflects that department's own "
+                "patient population.  A steeper drop means faster deterioration — "
+                "these patients have the greatest urgency for resource allocation."
+            )
 
         # ── Per-department AI mortality breakdown ────────────────────
         st.markdown("---")

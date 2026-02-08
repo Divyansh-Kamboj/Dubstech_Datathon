@@ -15,6 +15,12 @@ import altair as alt
 from src.engine import BudgetAllocator
 from src.costs import apply_meps_costs, MEPS_BASE_COSTS
 
+# ── Page config ──────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Project Aesclepius: 2026 Simulator",
+    layout="wide",
+)
+
 # ── Data loading & cleaning ──────────────────────────────────────────
 @st.cache_data
 def load_data(path: str = "2026_forecast.csv") -> pd.DataFrame:
@@ -38,6 +44,10 @@ def load_data(path: str = "2026_forecast.csv") -> pd.DataFrame:
     # Attach MEPS-projected cost columns (Cost_Per_Person, Total_Group_Cost)
     df = apply_meps_costs(df)
     return df
+
+
+# ── Sidebar controls ─────────────────────────────────────────────────
+st.sidebar.title("Project Aesclepius: 2026 Simulator")
 
 budget = st.sidebar.number_input(
     "Total Budget ($)",
@@ -71,6 +81,9 @@ st.sidebar.caption(
     "Risk is scaled 0–1 (Risk_Score ÷ 10).  "
     "Efficiency is inverted cost: cheapest dept → 1.0, priciest → 0.0."
 )
+
+# ── Cost reference in sidebar ────────────────────────────────────────
+st.sidebar.markdown("---")
 for dept, base in MEPS_BASE_COSTS.items():
     projected = round(base * (1.05 ** 3), 2)
     st.sidebar.text(f"{dept}: ${projected:,.2f}/person")

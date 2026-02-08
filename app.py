@@ -86,6 +86,7 @@ st.sidebar.caption(
 
 # ── Cost reference in sidebar ────────────────────────────────────────
 st.sidebar.markdown("---")
+st.sidebar.subheader("MEPS Cost Reference (2026)")
 for dept, base in MEPS_BASE_COSTS.items():
     projected = round(base * (1.05 ** 3), 2)
     st.sidebar.text(f"{dept}: ${projected:,.2f}/person")
@@ -132,6 +133,9 @@ if not partial.empty:
         )
 
 st.markdown("---")
+
+# ── Main chart: Department-level stacked bar ─────────────────────────
+st.subheader("Coverage by Department")
 
 dept_summary = (
     result
@@ -181,6 +185,9 @@ bar_chart = (
 )
 
 st.altair_chart(bar_chart, use_container_width=True)
+
+# ── Department coverage % ────────────────────────────────────────────
+st.subheader("Department Coverage Summary")
 dept_display = dept_summary[
     ["Department", "Predicted_Patients", "Covered_Patients",
      "Uncovered_Patients", "Coverage_Pct"]
@@ -192,6 +199,7 @@ st.dataframe(dept_display, use_container_width=True, hide_index=True)
 
 # ── Unfunded risk groups ─────────────────────────────────────────────
 st.markdown("---")
+st.subheader("🔴 Unfunded Risk Groups (0 % Coverage)")
 
 unfunded = result[result["Funded_Pct"] == 0.0]
 

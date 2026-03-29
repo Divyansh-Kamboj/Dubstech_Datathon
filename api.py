@@ -14,8 +14,7 @@ from typing import Any
 import pandas as pd
 import uvicorn
 import xgboost as xgb
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, Response
 from pydantic import BaseModel, Field
 
 from src.costs import apply_meps_costs
@@ -62,20 +61,26 @@ class SimulationRequest(BaseModel):
 
 app = FastAPI(title="Project Aesclepius API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    if request.method == "OPTIONS":
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = "https://aesclepius.tech"
+        response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "https://aesclepius.tech"
+    return response
 
 XGB_BOOSTER, COX_MODELS = load_models()
 
 
-@app.options("/{rest_of_path:path}")
-async def preflight_handler() -> dict[str, Any]:
-    return {}
+@app.get("/")
+async def root():
+    return {"status": "online", "message": "Project Aesclepius API"}
 
 
 @app.post("/simulate")

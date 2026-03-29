@@ -6,4 +6,5 @@ numpy
 xgboost
 pulp
 scikit-learn
+lifelines
 python-multipart

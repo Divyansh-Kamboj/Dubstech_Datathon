@@ -473,11 +473,12 @@ export default function Home() {
                             fontFamily: "var(--font-special-elite)",
                           }}
                           labelStyle={{ color: "#000000" }}
-                          formatter={(value: number, key: string) => [
-                            value.toLocaleString(),
-                            key === "coveredPatients"
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          formatter={(value: any, name: any) => [
+                            value ? value.toLocaleString() : "0",
+                            name === "coveredPatients"
                               ? "Covered Patients"
-                              : "Uncovered Patients",
+                              : "Unmet Need",
                           ]}
                         />
                         <Bar

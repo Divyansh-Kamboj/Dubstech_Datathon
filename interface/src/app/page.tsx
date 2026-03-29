@@ -216,7 +216,12 @@ export default function Home() {
       setIsFetching(true);
       setError(null);
       try {
-        const response = await fetch("http://localhost:8000/simulate", {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL;
+        if (!apiBase) {
+          throw new Error("NEXT_PUBLIC_API_URL is not configured");
+        }
+
+        const response = await fetch(`${apiBase}/simulate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

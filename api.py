@@ -32,6 +32,23 @@ def load_data(path: str = FORECAST_PATH) -> pd.DataFrame:
     Load 2026 forecast CSV and align columns for the allocation engine.
     """
     df = pd.read_csv(path)
+    print(f"DEBUG: CSV Columns are {df.columns.tolist()}")
+
+    # Normalize header whitespace and support alternative department names.
+    df.columns = [str(col).strip() for col in df.columns]
+    lower_to_actual = {str(col).lower(): str(col) for col in df.columns}
+
+    if "department" not in lower_to_actual:
+        for candidate in ("dept", "sector"):
+            if candidate in lower_to_actual:
+                df = df.rename(columns={lower_to_actual[candidate]: "Department"})
+                break
+        else:
+            # Fallback: use first column as Department.
+            df = df.rename(columns={df.columns[0]: "Department"})
+    elif lower_to_actual["department"] != "Department":
+        df = df.rename(columns={lower_to_actual["department"]: "Department"})
+
     df = df.rename(columns={"Predicted_Patients_2026": "Projected_Volume"})
     df["Department"] = df["Department"].str.replace("_", " ", regex=False)
     df = apply_meps_costs(df)

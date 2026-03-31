@@ -49,9 +49,29 @@ def load_data(path: str = FORECAST_PATH) -> pd.DataFrame:
     elif lower_to_actual["department"] != "Department":
         df = df.rename(columns={lower_to_actual["department"]: "Department"})
 
-    df = df.rename(columns={"Predicted_Patients_2026": "Projected_Volume"})
+    volume_candidates = (
+        "projected_volume",
+        "predicted_patients_2026",
+        "predicted_volume",
+        "projected volume",
+        "predicted patients 2026",
+        "prediction",
+    )
+    for candidate in volume_candidates:
+        if candidate in lower_to_actual:
+            df = df.rename(columns={lower_to_actual[candidate]: "Projected_Volume"})
+            break
+
+    if "Projected_Volume" not in df.columns:
+        print(
+            "DEBUG: load_data could not find a projected volume column. "
+            f"Available columns: {df.columns.tolist()}"
+        )
+
     df["Department"] = df["Department"].str.replace("_", " ", regex=False)
+    df = df.reset_index(drop=True)
     df = apply_meps_costs(df)
+    df = df.reset_index(drop=True)
     return df
 
 

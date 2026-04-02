@@ -1,3 +1,17 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:1f142660e8cc0d1c9877d97eab23ab0899010e728740ba0fb3c31a4c792de456
-size 382
+Department,Risk_Score,Predicted_Patients_2026
+Cardiology,5.0,1760
+Cardiology,6.0,6601
+Cardiology,7.0,5783
+Cardiology,8.0,7050
+Endocrinology,3.0,2288
+Endocrinology,4.0,7956
+Endocrinology,5.0,6267
+Endocrinology,6.0,5658
+Mental_Health,4.0,12276
+Mental_Health,5.0,6129
+Mental_Health,6.0,2271
+Mental_Health,7.0,2198
+Oncology,6.0,604
+Oncology,7.0,1978
+Oncology,8.0,2426
+Oncology,9.0,4132
